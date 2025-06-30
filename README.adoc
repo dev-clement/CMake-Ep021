@@ -1,0 +1,164 @@
+# CMake and dependency management
+Suppose you are writing your application and needs a third party library, well it tend to be tough to do so in C++, there is no tool that let you do it easily.
+
+:toc:
+:sectnums:
+
+== Introduction
+In software development, fetching third-party libraries are not something that comes across once or two times, it's away more often than this.
+
+== Fetching third party in C++
+In C++, you are all good when you are doing your application using the standard template library `STL`, however, once you need to bring something external to your project, that may get tough if you don't use anything else than C++ itself.
+
+For instance, you are making a project, you did succeed on your part, let's call it backend, but, we will need a GUI tool in order to finish your project, this GUI tool is a third-party library:
+
+* SFML
+* Qt
+* OpenGL
+
+In C++, if you do want those libraries, you'll have to download it from the internet, and then compile it and run it on the production machine, although, first it's a very tedious process and it's also an error-prone one.
+
+Anyway, that's also where CMake comes into play, it gives you a way to get third-party library from the internet, however it's not completely perfect.
+
+== FetchContent module
+This module enables populating content at configure time via any method suppported by the `External project` module. Whereas `ExternalProject_Add()` downloads at build time, the `FetchContent` module makes content available immediately, allowing the configure step to use the content in commands like: `add_subdirectory()`, `include()` or `file()` operations/commands.
+
+=== FetchContent_Populate
+```cmake
+FetchContent_Populate(
+  <name>
+  [QUIET]
+  [SUBBUILD_DIR <subBuildDir>]
+  [SOURCE_DIR <srcDir>]
+  [BINARY_DIR <binDir>]
+  ...
+)
+```
+At least one option must be specified after `<name>`, otherwise the call is interpreted differently. The supported option for `FetchContent_Populate` are the same as those for `FetchContent_Declare` with a few exceptions. Hence, the following do not relate to populating content with `FetchContent_Populate` and therefore are not supported:
+
+* `EXCLUDE_FROM_ALL`
+* `SYSTEM`
+* `OVERRIDE_FIND_PACKAGE`
+* `FIND_PACKAGE_ARGS`
+
+The `FetchContent` module also support defining and populating content in a single call, with no check for whether the content has been populated elsewhere already. This should not be done in projects, but may be appropriate for populating content in `CMake script mode`.
+
+=== FetchContent_Populate
+The `FetchContent_Populate` command is a self-contained call which can be used to perform content population as an isolated operation. It is rarely the right command to use, projects should almost always use `FetchContent_Declare`, and `FetchContent_MakeAvailable` instead. The main use case for `FetchContent_Populate` is in script mode as part of implementing some other higher level custom feature.
+
+=== FetchContent population
+Content population details should be defined separately from the command that performs the actual population. This separation ensures that all the dependency details are defined before anything might try to use them to populate content.  This is particularly important in more complex project herarchies where dependencies may be shared between multiple projects.
+
+The following example shows a typical example of declaring content details for some dependencies and then ensuring they are populated with a separate call:
+
+```cmake
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY  https://github.com/google/googletest.git
+    GIT_TAG         703bd9caab50b139428cea1aaff9974ebee5742e # release-1.10.0
+)
+
+FetchContent_Declare(
+    myCompanyIcons
+    URL         https://intranet.mycompany.com/assets/iconset_1.12.tar.gz
+    URL_HASH    MD5=5588a7b18261c20068beabfb4f530b87
+)
+
+FetchContent_MakeAvailable(googletest myCompanyIcons)
+```
+
+The `FetchContent_MakeAvailable` command ensures the named dependencies have been populated, either by an earlier call, or by populating them itself. When performing the population, it will also add them to the main build, if possible, so that the main build can use the populated projects `targets`.
+
+When using a hierarchical project arrangement, projects at higher levels in the hierarchy are able to override the declared details of content specified anywhere lower in the project hierarchy. The first details to be declared for a given dependency take precedence, regardless of where in the project herarchy that occurs.
+
+Similarly, the first call that tries to populate a dependency "wins", with subsequent populations reusing the result of the first instead of repeating the population again. 
+
+=== Command FetchContent_Declare
+```cmake
+FetchContent_Declare(
+  <name>
+  <contentOptions>...
+  [EXCLUDE_FROM_ALL]
+  [SYSTEM]
+  [OVERRIDE_FIND_PACKAGE |
+   FIND_PACKAGE_ARGS args...]
+)
+```
+
+The `FetchContent_Declare` function recorde the options that describe how to populate the specified content. If such details have already been recorded earlier in this project (regardless of where in the project hierarchy), this an all later calls for the same content `<name>` are ignored. This "first to record, wins" approach is what allows herarchical projects to have parent projects override content details of child projects.
+
+The content `<name>` can be any string without spaces, but good practice would be to use only letters, numbers, and underscores. The name will be treated case-insensitively, and it should be obvious for the content it represents. It is often the name of the child project, or the value given to its top level `project()` command (if it is a CMake project). For well-known public projects, the name should generally be the official name of the project. Choosing an unusual name makes it unlikely that other projects needing that same content will use the same name, leading to the content being populated multiple times.
+
+The content `<contentOptions>` can be any of the downloaded, update, or patch options that the `ExternalProject_Add()` command understands. The configure, build, install and test steps are explicitly disabled, so options related to those steps will be ignored. The `SOURCE_DIR` option is an exception.
+
+In most cases, `<contentOptions>` will just be a couple of options defining the download method and method specific details like a commit tag or archive hash. For example:
+
+```cmake
+FetchContent_Declare(
+  googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        703bd9caab50b139428cea1aaff9974ebee5742e # release-1.10.0
+)
+
+FetchContent_Declare(
+  myCompanyIcons
+  URL      https://intranet.mycompany.com/assets/iconset_1.12.tar.gz
+  URL_HASH MD5=5588a7b18261c20068beabfb4f530b87
+)
+
+FetchContent_Declare(
+  myCompanyCertificates
+  SVN_REPOSITORY svn+ssh://svn.mycompany.com/srv/svn/trunk/certs
+  SVN_REVISION   -r12345
+)
+```
+NOTE: Where contents are being fetched from a remote location and you do not control that server, it is advisable to use a hadh for `GIT_TAG` rather than a branch or tag name. A commit hash is more secure and helps to confirm that the downloaded contents are what you expected.
+
+== How to use FetchContent module
+First and foremost, you will need to get the FetchContent dependency like so:
+
+=== Including the FetchContent module
+```cmake
+include(FetchContent)
+```
+If you specify an include of the FetchContent module, the CMakeLists.txt file will have access to it.
+
+=== Using FetchContent_Declare
+Once you include the `FetchContent` module, you can then use its functions, first of one is for declaring the module you want in your CMakeLists.txt:
+
+```cmake
+FetchContent_Declare(
+    fmt
+    ...
+)
+
+FetchContent_MakeAvailable(fmt)
+```
+
+NOTE: In the example above, you use the `FetchContent_Declare` to declare a module named fmt, this parameter can be anything as long as it is a module available to you. You should make this name relevant to the content you are trying to get.
+
+For instance, in the example above we want to fetch the `fmt` library, that is a library used to format outputs to the console in a nice way.
+
+```cmake
+FetchContent_Declare(
+    ...
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG 10.1.1
+)
+
+FetchContent_MakeAvailable(fmt)
+```
+
+In the example above, once you specified the name of the module you want to fetch, in our case it is `fmt` that is an open-source library for formatting in the output purposes.
+
+Then you will give to `FetchContent` a repository to clone the dependency, in this case it is the git repository of the `fmt`.
+
+NOTE: In the case of you fetching another library, you should be aware of that the name isn't really important, the name (in our case `fmt`) could be anything, it's just a name the project will use. Although that we are using github right now, that doesn't means you HAVE to use github, you can use anything, like svn, bitbucket, random url and so on .
+
+NOTE: In case of you are using git to fetch the content, you can specify a tag if there is, or even a version (release, release-candidate) if there is some.
+
+=== Using FetchContent_MakeAvailable
+The `FetchContent_MakeAvailable` command ensures the named dependencies have been populated, either by an earlier call, or by populating them itself. When performing the population, it will also add them to the main build, if possible, so that the main build can use the populated projects `target`, etc.
+
+This command ensures that each of the named dependencies are made available to the project by the time it returns. There must have been a call to `FetchContent_Declare()` for each dependency, and the first such call will control how that dependency will be made available.
+
